@@ -1,0 +1,15 @@
+gymnasium[classic-control]>=0.29
+stable-baselines3>=2.3.0
+numpy>=1.25
+scipy>=1.10
+psutil>=5.9
+torch>=2.0
+matplotlib>=3.7
+fvcore>=0.1.5
+reservoirpy>=0.4
+cma>=4.0
+pytest>=7.0
+
+# Optional: GPU power draw — populates energy_efficiency_w.
+# Install via:  pip install nvidia-ml-py>=13.595
+# (legacy `pynvml` PyPI package is deprecated — do NOT install it; nvidia-ml-py provides `import pynvml` as drop-in)
