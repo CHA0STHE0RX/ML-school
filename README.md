@@ -102,7 +102,7 @@ Each row in `results/results.jsonl` is one JSON object. Key fields:
 - `inf_{lat_ms, macs, mem_mb, gpu_mem_mb}` — inference cost.
 - `clean_return`, `clean_return_std` — unperturbed performance, in raw env reward units.
 - `success ∈ [0, 1]`, `adapt_score ∈ [0, 1] | None` — universal grades. Formulas declared in `exam.formula`.
-- `exam.{name, config, raw, formula}` — capability-test-specific block. For ResilienceExam, `exam.raw` carries `{aurc, s_half, s_max, cliff_slope, clean_return, points[]}`.
+- `exam.{name, config, raw, formula}` — capability-test-specific block. For ResilienceExam, `exam.raw` carries `{aurc, absolute_aurc, s_half, s_max, cliff_slope, clean_return, fit_rmse, points[]}`.
 - `env_metrics.*` — per-env creative metrics.
 - `diagnostics.*` — agent-specific extras.
 
