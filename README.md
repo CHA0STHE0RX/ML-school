@@ -26,7 +26,7 @@ pip install torch --index-url https://download.pytorch.org/whl/cu124
 ## Run
 
 ```bash
-# Smoke test — 1 agent, 1 env, 5k training steps (~2 min on CPU)
+# Smoke test — 1 agent, 1 env, 5k training steps
 python run_experiments.py --agents PPO --envs Pendulum-v1 --timesteps 5000
 
 # Full v1 run — uses the ROSTER constant at the top of run_experiments.py
@@ -38,9 +38,9 @@ python run_experiments.py --skip-training --force-eval
 # Preview what would run, without executing
 python run_experiments.py --dry-run
 
-# Generate plots from results.jsonl — one script per research question
-python plot_resilience.py --tag <tag>     # resilience signature: curves + leaderboard + breaking-point
-python plot_progression.py                # progression across tagged budgets: triptych + bundle
+# Generate plots from results.jsonl
+python plot_resilience.py --tag <tag>     # resilience signature
+python plot_progression.py                # progression across tagged budgets
 ```
 
 For the canonical PPO/Pendulum progression dataset:
@@ -75,14 +75,14 @@ Outputs:
 ├── exams/
 │   ├── base.py            # Exam protocol
 │   └── resilience.py      # ResilienceExam — wraps EnvironmentCritic
-├── tests/                 # 33 pytest tests (instrument calibration)
+├── tests/                 # 34 pytest tests (instrument calibration)
 ├── docs/DESIGN.md         # design rationale and bug-fix audit
 ├── critic.py              # EnvironmentCritic — bisection probe + logistic fit
 ├── wrappers.py            # FLICKER / GAUSSIAN_NOISE / ACTION_DELAY / PHYSICS_SHIFT
 ├── records.py             # ExperimentRecord schema (the row written to JSONL)
 ├── task_metrics.py        # Per-env creative metrics (Pendulum: smoothness/energy/upright)
 ├── plots.py               # Utility module: loaders + drawing primitives (no main)
-├── plot_resilience.py     # One research question: agent's resilience signature
+├── plot_resilience.py     # Agent's resilience signature
 ├── run_experiments.py     # Orchestrator (cartesian product, resumability)
 ├── requirements.txt
 └── README.md
@@ -105,9 +105,6 @@ Each row in `results/results.jsonl` is one JSON object. Key fields:
 - `exam.{name, config, raw, formula}` — capability-test-specific block. For ResilienceExam, `exam.raw` carries `{aurc, absolute_aurc, s_half, s_max, cliff_slope, clean_return, fit_rmse, points[]}`.
 - `env_metrics.*` — per-env creative metrics.
 - `diagnostics.*` — agent-specific extras.
-
-The split between universal grades (`success`, `adapt_score`) and exam-specific raw (`exam.raw`) is what lets you produce cross-exam plots without losing per-exam fidelity. The `exam.formula` string is the receipt — every record carries its own derivation.
-
 ---
 
 ## Resilience methodology (one-paragraph version)
@@ -122,7 +119,7 @@ For each perturbation type, an `EnvironmentCritic` probes the agent across a str
 pytest tests/
 ```
 
-33 tests, ~20 seconds. They enforce instrument-calibration invariants: bit-identity of wrappers at strength=0, stateful-policy isolation between episodes, schema round-trip through JSONL, logistic fit recovers known parameters from synthetic data, etc. Test names describe the invariant being protected (e.g. `test_stateful_leak_isolated_by_reset`, `test_flicker_identity_at_zero`).
+34 tests, ~20 seconds. They enforce instrument-calibration invariants: bit-identity of wrappers at strength=0, stateful-policy isolation between episodes, schema round-trip through JSONL, logistic fit recovers known parameters from synthetic data, etc. Test names describe the invariant being protected (e.g. `test_stateful_leak_isolated_by_reset`, `test_flicker_identity_at_zero`).
 
 ---
 
