@@ -142,7 +142,7 @@ class ESNAgent:
                 env_steps += steps
                 if env_steps >= total_timesteps:
                     break
-            if fitnesses:
+            if fitnesses>= es.sp.weights.mu:
                 es.tell(solutions[:len(fitnesses)], fitnesses)
                 opt_steps += 1
                 loss_curve.append(-min(fitnesses))  # best (highest) return this gen
