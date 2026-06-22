@@ -75,7 +75,7 @@ class ActionDelayWrapper(gym.Wrapper):
     def __init__(self, env: gym.Env, strength: float = 0.0, max_delay: int = 10):
         super().__init__(env)
         self.k = int(round(strength * max_delay))
-        self._buf: deque = deque(maxlen=max(self.k, 1))
+        self._buf: deque = deque(maxlen=self.k + 1)
 
     def reset(self, **kw):
         self._buf.clear()
