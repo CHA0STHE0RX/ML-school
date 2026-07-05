@@ -1,7 +1,7 @@
 # ML-school
 
-A benchmark framework for grading reinforcement-learning agents from different families on identical, unbiased capability exams in shared Gymnasium environments.
-Check out the paper:  [ML-School: A Benchmark for Grading RL Agents Across Families (2026)](https://doi.org/10.5281/zenodo.21207742)
+A benchmark framework for grading reinforcement-learning agents from different families on identical, unbiased capability exams in shared Gymnasium environments.  
+</br>Check out the paper:  [ML-School: A Benchmark for Grading RL Agents Across Families (2026)](https://doi.org/10.5281/zenodo.21207742)
 
 ---
 
