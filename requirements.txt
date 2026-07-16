@@ -10,6 +10,14 @@ reservoirpy>=0.4
 cma>=4.0
 pytest>=7.0
 
+# Optional: MuJoCo-backed envs (SwingupDoublePendulum-v0, WIP swing-up branch).
+# The core framework and the paper's Pendulum results don't need it; tests skip
+# cleanly without it (pytest.importorskip).
+#   pip install mujoco>=3.0
+
+# Optional: GIF rendering (watch.py only).
+#   pip install imageio>=2.14
+
 # Optional: GPU power draw — populates energy_efficiency_w.
 # Install via:  pip install nvidia-ml-py>=13.595
 # (legacy `pynvml` PyPI package is deprecated — do NOT install it; nvidia-ml-py provides `import pynvml` as drop-in)

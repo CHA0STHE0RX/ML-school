@@ -1,16 +1,18 @@
-"""task_metrics: per-env creative metrics."""
+"""task_metrics: per-env creative metrics (collector functions, no registry)."""
 from __future__ import annotations
 import gymnasium as gym
 import numpy as np
 from agents.base import StatelessPolicy
-from task_metrics import collect_env_metrics
+from task_metrics import _pendulum_metrics
+
+
+def _env_fn():
+    return gym.make("Pendulum-v1")
 
 
 def test_pendulum_metrics_collected():
-    def env_fn():
-        return gym.make("Pendulum-v1")
     policy = StatelessPolicy(lambda obs: np.array([0.0], dtype=np.float32))
-    m = collect_env_metrics("Pendulum-v1", env_fn, policy, n_episodes=2, seed=0)
+    m = _pendulum_metrics(_env_fn, policy, n_episodes=2, seed=0)
     assert "action_smoothness" in m
     assert "energy_consumed" in m
     assert "time_to_first_upright" in m
@@ -18,9 +20,11 @@ def test_pendulum_metrics_collected():
     assert m["energy_consumed"] >= 0
 
 
-def test_unknown_env_returns_empty_dict():
-    def env_fn():
-        return gym.make("Pendulum-v1")  # placeholder
+def test_pendulum_metrics_survivorship_companions():
     policy = StatelessPolicy(lambda obs: np.array([0.0], dtype=np.float32))
-    m = collect_env_metrics("UnknownEnv-v0", env_fn, policy, n_episodes=1, seed=0)
-    assert m == {}
+    m = _pendulum_metrics(_env_fn, policy, n_episodes=3, seed=0)
+    assert "upright_success_rate" in m
+    assert 0.0 <= m["upright_success_rate"] <= 1.0
+    assert "time_to_first_upright_n" in m
+    assert isinstance(m["time_to_first_upright_n"], int)
+    assert "time_to_first_upright" in m and "energy_consumed" in m

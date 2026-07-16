@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 import gymnasium as gym
 import numpy as np
-from records import ModType
+from records import ModType, ClassicAttrs, MujocoGravity, DEFAULT_PHYSICS_ATTRS
 
 class FlickerWrapper(gym.ObservationWrapper):
     """P(obs := 0) = strength."""
@@ -47,7 +47,13 @@ class GaussianObsNoise(gym.ObservationWrapper):
             buf.append(obs)
             if term or trunc:
                 obs, _ = self.env.reset(); buf.append(obs)
-        s = np.asarray(buf, dtype=np.float64).std(axis=0)
+        arr = np.asarray(buf, dtype=np.float64)
+        # Drop exploded-sim rows: one NaN observation (e.g. MuJoCo instability
+        # during the random warmup) would otherwise poison the scale for the
+        # whole probe. All-finite rollouts are untouched by this filter.
+        finite = np.isfinite(arr).all(axis=1)
+        arr = arr[finite] if finite.any() else np.zeros((1, arr.shape[1]))
+        s = arr.std(axis=0)
         s[s < 1e-6] = 1.0
         self._scale = s.astype(np.float32)
         # self._scale = (env.observation_space.high - env.observation_space.low) / 6
@@ -70,7 +76,15 @@ class GaussianObsNoise(gym.ObservationWrapper):
         return (observation + noise * self._scale).astype(observation.dtype)
 
 class ActionDelayWrapper(gym.Wrapper):
-    """Execute action from k = round(strength * max_delay) steps ago."""
+    """Execute action from k = round(strength * max_delay) steps ago.
+
+    k is an integer, so the strength axis is quantized to max_delay+1 levels,
+    and Python's round() is banker's rounding (0.05 * 10 -> k=0, not 1). This
+    mapping is part of the recorded measurement semantics — do not change it
+    silently, or every stored ACTION_DELAY curve is re-labeled. Envs probed
+    with a small s_max (e.g. swing-up at 0.2 -> k in {0, 1, 2}) resolve only a
+    few distinct delays; prefer raising max_delay over shrinking s_max further.
+    """
 
     def __init__(self, env: gym.Env, strength: float = 0.0, max_delay: int = 10):
         super().__init__(env)
@@ -91,32 +105,51 @@ class ActionDelayWrapper(gym.Wrapper):
         return self.env.step(self._buf.popleft())
 
 class PhysicsShiftWrapper(gym.Wrapper):
-    """Scale dynamics params by (1 +/- strength). Sign alternates per reset."""
+    """Scale dynamics params by (1 +/- strength). Sign alternates per reset.
 
-    def __init__(self, env: gym.Env, strength: float = 0.0):
+    Dispatches on the declared knob (the env's profile is the source of truth):
+      - ClassicAttrs(names): scale those python attrs on env.unwrapped.
+      - MujocoGravity():      scale env.unwrapped.model.opt.gravity[2].
+    Default knob is ClassicAttrs(DEFAULT_PHYSICS_ATTRS) -> legacy behavior.
+    """
+
+    def __init__(self, env: gym.Env, strength: float = 0.0, knob=None):
         super().__init__(env)
         self.strength = float(strength)
         self._flip = False
+        self._knob = knob if knob is not None else ClassicAttrs(DEFAULT_PHYSICS_ATTRS)
         u = self.env.unwrapped
-        attrs = ("gravity", "masscart", "masspole", "length", "force_mag", "m", "l", "g")
-        self._defaults = {a: getattr(u, a) for a in attrs
-                          if hasattr(u, a) and isinstance(getattr(u, a), (int, float))}
-        if not self._defaults:
-            raise RuntimeError(
-                f"PhysicsShiftWrapper has no known physics parameters to mutate on env "
-                f"{type(u).__name__}. Add the env's param names to the `attrs` tuple, "
-                f"or do not run PHYSICS_SHIFT perturbations on this env."
-            )
+        if isinstance(self._knob, MujocoGravity):
+            if not hasattr(u, "model"):
+                raise RuntimeError(
+                    f"PhysicsShiftWrapper(MujocoGravity) requires a MuJoCo env with "
+                    f"env.unwrapped.model, but {type(u).__name__} has none."
+                )
+            self._default_gravity_z = float(u.model.opt.gravity[2])
+        else:  # ClassicAttrs
+            self._defaults = {a: getattr(u, a) for a in self._knob.names
+                              if hasattr(u, a) and isinstance(getattr(u, a), (int, float))}
+            if not self._defaults:
+                raise RuntimeError(
+                    f"PhysicsShiftWrapper has no known physics parameters to mutate on env "
+                    f"{type(u).__name__}. Add the env's param names to the knob, "
+                    f"or do not run PHYSICS_SHIFT perturbations on this env."
+                )
 
     def reset(self, **kw):
         self._flip = not self._flip
         factor = 1.0 + (1.0 if self._flip else -1.0) * self.strength
-        for attr, default in self._defaults.items():
-            setattr(self.env.unwrapped, attr, default * factor)
+        u = self.env.unwrapped
+        if isinstance(self._knob, MujocoGravity):
+            u.model.opt.gravity[2] = self._default_gravity_z * factor
+        else:
+            for attr, default in self._defaults.items():
+                setattr(u, attr, default * factor)
         # factor = 1.0 + self.np_random.uniform(-strength, strength)  # random sign each reset
         return self.env.reset(**kw)
 
-def apply_mod(env: gym.Env, mod_type: ModType, strength: float) -> gym.Env:
+def apply_mod(env: gym.Env, mod_type: ModType, strength: float,
+              physics_knob=None) -> gym.Env:
     if mod_type == ModType.NONE or strength == 0.0:
         return env
     if mod_type == ModType.FLICKER:
@@ -126,5 +159,5 @@ def apply_mod(env: gym.Env, mod_type: ModType, strength: float) -> gym.Env:
     if mod_type == ModType.ACTION_DELAY:
         return ActionDelayWrapper(env, strength)
     if mod_type == ModType.PHYSICS_SHIFT:
-        return PhysicsShiftWrapper(env, strength)
+        return PhysicsShiftWrapper(env, strength, physics_knob)
     raise ValueError(f"Unknown mod type: {mod_type}")

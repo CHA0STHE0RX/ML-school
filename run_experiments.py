@@ -27,6 +27,7 @@ from agents.ppo_agent import PPOAgent
 from agents.esn_agent import ESNAgent
 from exams.resilience import ResilienceExam
 from records import HardwareInfo, ExperimentConfig
+from env_profiles import get_profile
 
 
 ROSTER = {
@@ -147,13 +148,15 @@ def _measure_inference_cost(policy, env_fn, n_warmup: int = 100, n_timed: int = 
 
 
 def run_cell(agent_name: str, env_id: str, seed: int, exam_name: str,
-             total_timesteps: int, force_train: bool, force_eval: bool) -> int:
+             total_timesteps: int, force_train: bool, skip_training: bool) -> int:
     """Run one (agent, env, seed, exam) cell. Returns number of records written."""
     cell_id = f"{agent_name}_{env_id}_seed{seed}_{exam_name}"
     weights_path = WEIGHTS_DIR / agent_name / env_id / f"seed{seed}"
 
+    profile = get_profile(env_id)
+
     def env_fn():
-        return gym.make(env_id)
+        return profile.make_fn() if profile else gym.make(env_id)
 
     AgentCls = AGENT_FACTORIES[agent_name]
     agent: AgentProtocol = AgentCls()
@@ -161,6 +164,11 @@ def run_cell(agent_name: str, env_id: str, seed: int, exam_name: str,
     if weights_path.exists() and not force_train:
         _write_status(f"{cell_id}: loading saved weights")
         train_result = agent.load(weights_path)
+    elif skip_training and not force_train:
+        raise FileNotFoundError(
+            f"{cell_id}: --skip-training is set but no weights exist at {weights_path}. "
+            f"Run once without --skip-training to create them."
+        )
     else:
         _write_status(f"{cell_id}: training ({total_timesteps} steps)")
         train_result = agent.train(env_fn, total_timesteps=total_timesteps, seed=seed)
@@ -206,7 +214,7 @@ def main():
     ap.add_argument("--exams", nargs="+", default=None)
     ap.add_argument("--timesteps", type=int, default=None)
     ap.add_argument("--skip-training", action="store_true",
-                    help="alias for --force-train=false; weights must exist on disk")
+                    help="reuse saved weights only; error if a cell has no weights on disk")
     ap.add_argument("--force-train", action="store_true")
     ap.add_argument("--force-eval", action="store_true")
     ap.add_argument("--dry-run", action="store_true")
@@ -242,7 +250,7 @@ def main():
         try:
             n = run_cell(a, e, s, x, total_timesteps=timesteps,
                          force_train=args.force_train,
-                         force_eval=args.force_eval)
+                         skip_training=args.skip_training)
             elapsed = time.perf_counter() - t_start
             print(f"    done — {n} records — elapsed {elapsed/60:.1f} min")
         except Exception as exc:

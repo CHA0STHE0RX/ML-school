@@ -22,15 +22,32 @@ from reservoirpy.nodes import Reservoir
 from agents.base import Policy, TrainResult
 
 
+# Frozen 2026-07 from the tuning campaign (tune_esn.py, ~420 runs on
+# Pendulum-v1; winner confirmed on 5 seeds at 500k steps, held-out clean
+# return ≈ -794 vs -904 for the pre-campaign defaults N=100/sr=0.9/pop=12).
+# The plateau is structural (budget-proof to 15x, survives trainer
+# substitution) — don't re-tune these knobs; escalations would be new
+# experiments (noise handler, nonlinear readout).
 DEFAULT_HP = {
-    "reservoir_size": 100,
-    "spectral_radius": 0.9,
+    "reservoir_size": 50,
+    "spectral_radius": 0.3,
     "leak_rate": 0.3,
     "input_scaling": 1.0,
     "rc_connectivity": 0.1,
-    "cma_popsize": 12,
+    # reservoirpy's Win density default (0.1) made explicit and sweepable. At
+    # 0.1 with a 3-dim obs, ~73% of units get no direct input (0.9^3); classic
+    # ESN practice uses a dense Win. Old checkpoints (no key) load as 0.1.
+    # NOTE: dense Win (1.0) was catastrophic in the campaign — keep sparse.
+    "input_connectivity": 0.1,
+    "cma_popsize": 6,
     "cma_sigma_init": 0.3,
     "eps_per_eval": 5,
+    # Which solution to deploy after training. "best" = es.best.x, the
+    # highest-scoring individual ever — under 5-episode fitness noise that is
+    # an elitist lucky draw (verified: identical deployed weights at 500k and
+    # 2.5M budgets). "xfavorite" = the CMA-ES distribution mean, which pycma's
+    # docs call the best available estimate of the optimum.
+    "cma_deploy": "best",
 }
 
 
@@ -74,6 +91,7 @@ class ESNAgent:
             lr=self.hp["leak_rate"],
             input_scaling=self.hp["input_scaling"],
             rc_connectivity=self.hp["rc_connectivity"],
+            input_connectivity=self.hp.get("input_connectivity", 0.1),
             seed=seed,
         )
 
@@ -152,6 +170,10 @@ class ESNAgent:
         env.close()
 
         best_x = es.best.x if (es.best is not None and es.best.x is not None) else x0
+        if self.hp.get("cma_deploy", "best") == "xfavorite":
+            xfav = getattr(es.result, "xfavorite", None)
+            if xfav is not None:
+                best_x = xfav
         self._readout_W = best_x.reshape(N + 1, self._act_dim).astype(np.float32)
 
         self._train_result = TrainResult(
@@ -232,13 +254,18 @@ class ESNAgent:
         return int(self._readout_W.size)
 
     def inference_macs(self) -> int | None:
-        """input_proj (obs_dim x N) + recurrent (N x N x density) + readout (N x act_dim).
-        reservoirpy ops aren't fvcore-traceable, so we count by hand."""
+        """input_proj (obs_dim x N x in_density) + recurrent (N x N x density)
+        + readout (N x act_dim). Win and W are stored sparse by reservoirpy,
+        so MACs count nonzero multiplies — both projections are discounted by
+        their density (before 2026-07-16 the input term was counted dense;
+        old records re-derived by rederive_inf_macs.py). Not fvcore-traceable,
+        so we count by hand."""
         if self._reservoir is None or self._readout_W is None:
             return None
         N = self.hp["reservoir_size"]
         density = self.hp.get("rc_connectivity", 1.0)
-        macs_input = self._obs_dim * N
+        in_density = self.hp.get("input_connectivity", 0.1)
+        macs_input = int(self._obs_dim * N * in_density)
         macs_recurrent = int(N * N * density)
         macs_readout = N * self._act_dim
         return macs_input + macs_recurrent + macs_readout

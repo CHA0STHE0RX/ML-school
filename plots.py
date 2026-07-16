@@ -17,6 +17,7 @@ from collections import defaultdict
 from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+from scipy.interpolate import PchipInterpolator
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DEFAULT_IN = PROJECT_ROOT / "results" / "results.jsonl"
@@ -101,8 +102,17 @@ def draw_curves_per_mod(records: list[dict], out_dir: Path) -> None:
             s, rn = norm_points(raw)
             label = f'{r["config"]["agent_name"]} (s½={raw["s_half"]:.2f}, AURC={raw["aurc"]:.2f})'
             grid = np.linspace(0, raw["s_max"], 200)
-            fit = 1.0 / (1.0 + np.exp(raw["cliff_slope"] * (grid - raw["s_half"])))
-            line, = ax.plot(grid, fit, lw=2, label=label)
+            if raw.get("fit_method") == "pchip_fallback":
+                # This record's aurc/s_half came from the shape-agnostic PCHIP
+                # fallback (logistic misfit) — draw that same shape, dashed;
+                # drawing the rejected logistic would not match the stored aurc.
+                su, idx = np.unique(s, return_index=True)
+                fit = np.clip(PchipInterpolator(su, rn[idx])(grid), 0.0, 1.0)
+                line, = ax.plot(grid, fit, lw=2, ls="--", label=label + " [pchip]")
+            else:
+                z = np.clip(raw["cliff_slope"] * (grid - raw["s_half"]), -50.0, 50.0)
+                fit = 1.0 / (1.0 + np.exp(z))
+                line, = ax.plot(grid, fit, lw=2, label=label)
             ax.scatter(s, rn, s=28, color=line.get_color(), edgecolor="white", zorder=3)
             ax.axvline(raw["s_half"], color=line.get_color(), ls=":", alpha=0.4)
         ax.axhline(0.5, color="grey", ls="--", lw=0.8, alpha=0.5)
@@ -121,15 +131,19 @@ def draw_leaderboard(records: list[dict], out_dir: Path) -> None:
     """Grouped bar: AURC per (agent, mod). ↑ the better."""
     agents = sorted({r["config"]["agent_name"] for r in records})
     mods = sorted({r["exam"]["config"]["mod_type"] for r in records})
-    data = {a: {m: 0.0 for m in mods} for a in agents}
+    # Mean over all records per (agent, mod) — a file can hold several seeds;
+    # keeping only one of them (last-writer-wins) would misstate the leaderboard.
+    data: dict[str, dict[str, list[float]]] = {a: {m: [] for m in mods} for a in agents}
     for r in records:
-        data[r["config"]["agent_name"]][r["exam"]["config"]["mod_type"]] = r["exam"]["raw"]["aurc"]
+        data[r["config"]["agent_name"]][r["exam"]["config"]["mod_type"]].append(
+            r["exam"]["raw"]["aurc"])
 
     x = np.arange(len(mods))
     w = 0.8 / max(len(agents), 1)
     fig, ax = plt.subplots(figsize=(max(6, 1.2 * len(mods)), 4))
     for i, a in enumerate(agents):
-        ax.bar(x + i * w, [data[a][m] for m in mods], width=w, label=a)
+        ax.bar(x + i * w, [float(np.mean(data[a][m])) if data[a][m] else 0.0 for m in mods],
+               width=w, label=a)
     ax.set_xticks(x + w * (len(agents) - 1) / 2)
     ax.set_xticklabels(mods, rotation=20, ha="right")
     ax.set_ylabel("AURC ; ↑ the better")

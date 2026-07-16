@@ -1,0 +1,26 @@
+<!-- Fixed-base double pendulum, both hinges actuated. Weak wrist is applied
+     at construction by overriding the shoulder motor gear (see swingup_env.py). -->
+<mujoco model="swingup_double_pendulum">
+  <compiler inertiafromgeom="true"/>
+  <option gravity="1e-5 0 -9.81" integrator="RK4" timestep="0.01"/>
+  <default>
+    <joint damping="0.05"/>
+    <geom contype="0" friction="1 0.1 0.1" rgba="0.7 0.7 0 1"/>
+  </default>
+  <worldbody>
+    <geom name="floor" pos="0 0 -3.0" rgba="0.8 0.9 0.8 1" size="40 40 40" type="plane"/>
+    <body name="pole1" pos="0 0 0">
+      <joint name="shoulder" type="hinge" axis="0 1 0" pos="0 0 0"/>
+      <geom name="g_pole1" fromto="0 0 0 0 0 0.6" rgba="0 0.7 0.7 1" size="0.045" type="capsule"/>
+      <body name="pole2" pos="0 0 0.6">
+        <joint name="elbow" type="hinge" axis="0 1 0" pos="0 0 0"/>
+        <geom name="g_pole2" fromto="0 0 0 0 0 0.6" rgba="0 0.7 0.7 1" size="0.045" type="capsule"/>
+        <site name="tip" pos="0 0 0.6" size="0.02"/>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <motor joint="shoulder" name="m_shoulder" gear="100" ctrllimited="true" ctrlrange="-1 1"/>
+    <motor joint="elbow" name="m_elbow" gear="100" ctrllimited="true" ctrlrange="-1 1"/>
+  </actuator>
+</mujoco>

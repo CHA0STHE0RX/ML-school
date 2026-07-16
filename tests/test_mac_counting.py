@@ -37,16 +37,20 @@ def test_ppo_macs_match_manual_count():
 
 
 def test_esn_macs_match_manual_count():
-    """ESN default: 100-unit reservoir, rc_connectivity=0.1, on Pendulum (obs=3, act=1).
-    Manual: input_proj (3*100) + recurrent (100*100*0.1) + readout (100*1)
-          = 300 + 1000 + 100 = 1400.
+    """ESN with a pinned 100-unit reservoir, rc_connectivity=0.1,
+    input_connectivity=0.1, on Pendulum (obs=3, act=1). The shape is pinned
+    explicitly so this test checks the counting methodology, not whatever
+    DEFAULT_HP currently is. Win and W are stored sparse, so both projections
+    are discounted by their density (nonzero multiplies only):
+    Manual: input_proj (3*100*0.1) + recurrent (100*100*0.1) + readout (100*1)
+          = 30 + 1000 + 100 = 1130.
     """
-    agent = ESNAgent({"cma_popsize": 5, "eps_per_eval": 1})
+    agent = ESNAgent({"reservoir_size": 100, "cma_popsize": 5, "eps_per_eval": 1})
     agent.train(lambda: gym.make("Pendulum-v1"), total_timesteps=1500, seed=0)
     reported = agent.inference_macs()
     assert reported is not None, "ESN inference_macs returned None"
     N = 100
-    manual = 3 * N + int(N * N * 0.1) + N * 1
+    manual = int(3 * N * 0.1) + int(N * N * 0.1) + N * 1
     assert reported == manual, (
         f"ESN MACs mismatch: hand-count reports {reported}, manual is {manual}. "
         f"Check input_dim, reservoir_size, rc_connectivity, or act_dim."

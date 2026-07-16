@@ -29,6 +29,27 @@ class ModType(Enum):
     GAUSSIAN_NOISE = auto()
     ACTION_DELAY = auto()
 
+# --- physics-shift knob descriptors -----------------------------------------
+# Defined here (the dependency root) so wrappers.py can dispatch on them without
+# importing env_profiles, preserving the acyclic dependency graph (CLAUDE.md §10).
+DEFAULT_PHYSICS_ATTRS = (
+    "gravity", "masscart", "masspole", "length", "force_mag", "m", "l", "g",
+)
+
+
+@dataclass(frozen=True)
+class ClassicAttrs:
+    """Physics shift by scaling python attributes on env.unwrapped by (1 ± strength)."""
+    names: tuple[str, ...] = DEFAULT_PHYSICS_ATTRS
+
+
+@dataclass(frozen=True)
+class MujocoGravity:
+    """Physics shift by scaling env.unwrapped.model.opt.gravity[2] by (1 ± strength)."""
+
+
+PhysicsKnob = ClassicAttrs | MujocoGravity
+
 @dataclass(frozen=True)
 class ExperimentConfig:
     agent_name: str

@@ -8,6 +8,7 @@ from critic import EnvironmentCritic, RReport
 from records import (
     ExperimentRecord, ExperimentConfig, EnvironmentMod, ExamBlock, ModType, HardwareInfo,
 )
+from env_profiles import get_profile
 
 S_MAX_BY_MOD = {
     ModType.FLICKER:        0.9,
@@ -34,15 +35,21 @@ class ResilienceExam:
         records: list[ExperimentRecord] = []
         cfg: ExperimentConfig = context["config"]
 
-        from task_metrics import collect_env_metrics
-        env_metrics = collect_env_metrics(cfg.env_id, env_fn, policy, n_episodes=self.n_episodes,
-                                          seed=cfg.train_seed + 999)
+        profile = get_profile(cfg.env_id)
+        s_max_map = profile.s_max_by_mod if profile else S_MAX_BY_MOD
+        physics_knob = profile.physics_knob if profile else None
 
-        for mod_type, s_max in S_MAX_BY_MOD.items():
+        if profile and profile.metrics_fn:
+            env_metrics = profile.metrics_fn(
+                env_fn, policy, n_episodes=self.n_episodes, seed=cfg.train_seed + 999)
+        else:
+            env_metrics = {}
+
+        for mod_type, s_max in s_max_map.items():
             critic = EnvironmentCritic(
                 base_env_fn=env_fn, mod_type=mod_type, s_max=s_max,
                 n_episodes=self.n_episodes, max_iters=self.max_iters,
-                seed=cfg.train_seed + 1,
+                seed=cfg.train_seed + 1, physics_knob=physics_knob,
             )
             try:
                 report: RReport = critic.probe(policy)
@@ -81,6 +88,7 @@ class ResilienceExam:
                          "s_max": report.s_max, "cliff_slope": report.cliff_slope,
                          "absolute_aurc": report.absolute_aurc,
                          "fit_rmse": report.fit_rmse,
+                         "fit_method": report.fit_method,
                          "clean_return": report.clean_return,
                          "points": [p.__dict__ for p in report.points]},
                     formula="success := aurc; adapt_score := s_half / s_max",
